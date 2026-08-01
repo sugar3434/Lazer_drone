@@ -1,0 +1,22 @@
+[CAM] [2026-08-01 18:25:54,611] [ERROR] Ошибка отправки команды: [Errno 32] Broken pipe                                 [CAM] [2026-08-01 18:25:54,612] [INFO] Соединение с камерой закрыто.                                                    Посадка...                                                                                                              [2026-08-01 18:25:54,612] [INFO]  - Отправлена комманда: land                                                           [2026-08-01 18:25:54,612] [INFO]  - Получен ответ: success                                                              [2026-08-01 18:25:54,654] [INFO]  - Получен статус: action_status (land): pending ({})                                  [2026-08-01 18:25:54,655] [INFO]  - Получен статус: action_status (land): pending (Команда отправлена контроллеру)      [2026-08-01 18:25:54,655] [INFO]  - Получен статус: action_status (land): running ()                                    [2026-08-01 18:25:54,662] [INFO]  - Получен статус: action_status (land): success (Посадка...)                          [2026-08-01 18:25:54,662] [INFO] Команда land успешно завершена.                                                        Отключение...                                                                                                           [2026-08-01 18:25:57,664] [INFO] Соединение закрыто.                                                                    [CAM] [2026-08-01 18:25:57,664] [INFO] Соединение с камерой закрыто.                                                    Traceback (most recent call last):                                                                                        File "/home/orangepi/pro_5.py", line 217, in <module>                                                                     main()                                                                                                                File "/home/orangepi/pro_5.py", line 175, in main                                                                         tid, yaw_deg = targets_info[target_index]                                                                           TypeError: cannot unpack non-iterable int object  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
