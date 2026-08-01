@@ -1,0 +1,25 @@
+import cv2
+import time
+from ultralytics import YOLO
+from EurusEdu import EurusControl
+import time
+
+drone = EurusControl("10.42.0.1", 65432)
+drone.connect()
+
+drone.arm()
+drone.takeoff(0.67)
+
+drone.aruco_map_navigation(state=True, fly_in_borders=True)
+
+time.sleep(6)  # Ждём стабилизации
+
+team_color=
+drone.start_game()
+
+
+
+
+
+drone.land()
+drone.disconnect()
