@@ -166,30 +166,7 @@ def main():
                     if enemy_color in cls_name:
                         print(f"Обнаружен вражеский объект ({cls_name})! Огонь!")
                         drone.laser_shot()
-                        break 
-            
-            # --- ЛОГИКА ПОЛЕТА (Круговой облет 8 целей) ---
-            if targets_info:
-                if state == "GOTO_TARGET":
-                    if state_start_time == 0:
-                        tid, yaw_deg = targets_info[target_index]
-                        yaw_rad = math.radians(yaw_deg)
-                        print(f"Движение к цели {target_index + 1} из {len(targets_info)} (метка {tid}, yaw={yaw_deg}°)...")
-                        drone.move_to_marker(tid, 1, speed=flight_speed, yaw=yaw_rad)
-                        state_start_time = time.time()
-                    
-                    # Даем 8 секунд на долет до метки
-                    if time.time() - state_start_time > 8:
-                        state = "CHECK_TARGET"
-                        state_start_time = time.time()
-
-                elif state == "CHECK_TARGET":
-                    # Замираем на точке и смотрим 3 секунды.
-                    if time.time() - state_start_time > 3:
-                        # Переключаемся на следующую цель
-                        target_index = (target_index + 1) % len(targets_info)
-                        state = "GOTO_TARGET"
-                        state_start_time = 0
+                        break
             
             # Обработка нажатия клавиш OpenCV
             if cv2.waitKey(1) & 0xFF == ord('q'):
