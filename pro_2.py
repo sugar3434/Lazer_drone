@@ -52,11 +52,22 @@ def main():
     medkit_input = input("Введите номера меток аптечек (через запятую, например 10,11): ")
     medkit_markers = [int(m.strip()) for m in medkit_input.split(",") if m.strip()]
     
+    import math
+    print("Используется система из 8 меток для патрулирования (кручение):")
+    # Список целей в формате: (ID метки, угол рысканья yaw в градусах)
+    targets_info = [
+        (563),  # на нас (сзади)
+        (575), # наискосок право сзади
+        (383),  # право
+        (167),  # право спереди
+        (11),     # перед
+        (0),     # наскосок лево вверх (спереди)
+        (168),   # лево
+        (384)   # лево сзади
+    ]
+    
     enemy_color = input("Введите цвет врага (red/blue): ").strip().lower()
     my_color = "blue" if enemy_color == "red" else "red"
-    
-    # Целевой класс для обнаружения нейросетью (например, "red target")
-    enemy_target_class = f"{enemy_color} target"
     
     speed_input = input("Введите скорость полета (например 0.5): ")
     try:
@@ -68,48 +79,67 @@ def main():
     # Инициализация и подключение к дрону
     drone = EurusControl("192.168.1.17", 65432)
     drone.connect()
-    time.sleep(1)
+    time.sleep(2)
     
     # Инициализация и подключение к камере
     cam = EurusCamera("192.168.1.17", 8001)
     try:
         cam.connect()
         cam.start_stream()
-        time.sleep(1)
+        time.sleep(2)
     except Exception as e:
         print(f"Внимание: Не удалось подключиться к камере: {e}")
     
-    # Старт игры
-        drone.start_game(start_game=True, command_color=my_color)
     
     # Взлет с указанной скоростью
     print(f"Взлет на высоту 1.5м со скоростью {flight_speed}...")
     drone.arm()
     drone.takeoff(1, speed=flight_speed)
-    time.sleep(6) # Ожидание стабилизации
+    time.sleep(10) # Ожидание стабилизации
+
+    drone.start_game(start_game=True, team_color=my_color)
     
     print("Включение навигации по ArUco маркерам...")
     drone.aruco_map_navigation(state=True, fly_in_borders=True)
-    time.sleep(1)
+    time.sleep(3)
+
     
-    print("Миссия начата! Для выхода нажмите 'q' в окне видео или Ctrl+C в консоли.")
+    print("Миссия начата! Цикличный облет 8 целей... Для выхода нажмите 'q' в окне видео или Ctrl+C в консоли.")
+    
+    # Машина состояний для логики полета
+    state = "GOTO_TARGET"
+    state_start_time = 0
+    target_index = 0
     
     try:
         while True:
             # 1.0 Постоянная проверка состояния (Батарея, жизни)
             telemetry = drone.get_telemetry()
+            is_alive = True
             if telemetry is not None:
                 is_alive = telemetry.get("is_alive", True)
                 battery = telemetry.get("battery", {}).get("percentage", 100)
                 
                 # Если дрон "убит", летим на базу (аптечку)
-                if not is_alive:
+                if not is_alive and state != "HEALING":
                     if medkit_markers:
                         medkit_id = medkit_markers[0]
                         print(f"Дрон убит! Возврат на зону аптечки (маркер {medkit_id}) со скоростью {flight_speed}...")
                         drone.move_to_marker(medkit_id, 1, speed=flight_speed)
-                        time.sleep(5)
-                    continue
+                        state = "HEALING"
+                        state_start_time = time.time()
+                    else:
+                        state = "HEALING"
+                        state_start_time = time.time()
+
+            # Если мы лечимся, ждем пока оживем или пройдет время
+            if state == "HEALING":
+                if is_alive and time.time() - state_start_time > 10:
+                    print("Дрон снова в строю! Возврат к выполнению миссии.")
+                    state = "GOTO_TARGET"
+                    state_start_time = 0
+                time.sleep(1)
+                continue
 
             # Получение кадра из камеры
             ret, frame = False, None
@@ -118,35 +148,55 @@ def main():
             except Exception:
                 pass
                 
-            # 1.1 Обнаружение вражеских дронов и отрисовка CV
+            # Обнаружение объектов и отрисовка CV
+            targets = None
             try:
-                # Получаем данные о распознанных объектах
                 targets = cam.get_detection(blocking=False)
-                
-                # Отрисовываем рамки, если кадр успешно получен
                 if ret and frame is not None:
                     if targets:
                         draw_targets(frame, targets, enemy_color)
                     cv2.imshow("Drone Feed + YOLO", frame)
-                
-                # Логика стрельбы при обнаружении нужного таргета
-                if targets and "all_objects" in targets:
-                    for target in targets["all_objects"]:
-                        cls_name = target.get('class', '').lower()
-                        # Если класс содержит, например, "red target" или просто цвет врага
-                        if enemy_target_class in cls_name or enemy_color in cls_name:
-                            print(f"Вражеская цель ({cls_name}) обнаружена! Огонь!")
-                            drone.laser_shot()
-                            break
             except Exception as e:
                 pass
+            
+            # Постоянная проверка готовности выстрелить (проверяем на каждом шаге цикла!)
+            if targets and "all_objects" in targets:
+                for t in targets["all_objects"]:
+                    cls_name = t.get('class', '').lower()
+                    if enemy_color in cls_name:
+                        print(f"Обнаружен вражеский объект ({cls_name})! Огонь!")
+                        drone.laser_shot()
+                        break 
+            
+            # --- ЛОГИКА ПОЛЕТА (Круговой облет 8 целей) ---
+            if targets_info:
+                if state == "GOTO_TARGET":
+                    if state_start_time == 0:
+                        tid, yaw_deg = targets_info[target_index]
+                        yaw_rad = math.radians(yaw_deg)
+                        print(f"Движение к цели {target_index + 1} из {len(targets_info)} (метка {tid}, yaw={yaw_deg}°)...")
+                        drone.move_to_marker(tid, 1, speed=flight_speed, yaw=yaw_rad)
+                        state_start_time = time.time()
+                    
+                    # Даем 8 секунд на долет до метки
+                    if time.time() - state_start_time > 8:
+                        state = "CHECK_TARGET"
+                        state_start_time = time.time()
+
+                elif state == "CHECK_TARGET":
+                    # Замираем на точке и смотрим 3 секунды.
+                    if time.time() - state_start_time > 3:
+                        # Переключаемся на следующую цель
+                        target_index = (target_index + 1) % len(targets_info)
+                        state = "GOTO_TARGET"
+                        state_start_time = 0
             
             # Обработка нажатия клавиш OpenCV
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 print("Выход по нажатию 'q'.")
                 break
             
-            time.sleep(0.1)
+            time.sleep(1)
             
     except KeyboardInterrupt:
         print("\nМиссия прервана пользователем.")
