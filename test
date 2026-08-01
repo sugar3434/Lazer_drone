@@ -17,13 +17,14 @@ def draw_targets(frame, targets_data, enemy_color):
 
     for target in targets_data["all_objects"]:
         try:
+            # Получения JSON
             cx = target['x'] 
             cy = target['y'] 
             w = target['w']  
             h = target['h']  
             cls_name = target['class'].lower()
             conf = target.get('conf', 0.0)
-
+            
             top_left_x = int(cx - w / 2)
             top_left_y = int(cy - h / 2)
             bottom_right_x = int(cx + w / 2)
@@ -157,7 +158,7 @@ def main():
         print("Посадка...")
         drone.land()
         time.sleep(3)
-        print("Отключение...")
+        print("Конец кода")
         drone.disconnect()
         try:
             cam.stop_stream()
