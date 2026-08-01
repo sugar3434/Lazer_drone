@@ -62,21 +62,13 @@ def main():
     my_color = "blue" if enemy_color == "red" else "red"
 
     # Просто список меток для полета
-    patrol_markers = [563, 575, 383, 167, 11, 0, 168, 384]
+    patrol_markers = [515, 525, 381, 165, 59, 50, 170, 386]
 
     cam = EurusCamera("192.168.1.17", 8001)
     drone = EurusControl("192.168.1.17", 65432)
 
-    print("Подключаемся...")
-    drone.connect()
-    cam.connect()
-    cam.start_stream()
-    time.sleep(1)
-    
-    try:
-        drone.start_game(start_game=True, command_color=my_color)
-    except:
-        pass
+    drone.start_game(start_game=True, team_color=my_color)
+
 
     print("Взлет...")
     drone.arm()
@@ -84,7 +76,7 @@ def main():
     time.sleep(5)
 
     drone.aruco_map_navigation(state=True, fly_in_borders=True)
-    time.sleep(1)
+    time.sleep(3)
 
     print("Начинаем патрулирование!")
 
