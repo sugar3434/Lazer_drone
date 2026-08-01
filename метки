@@ -9,34 +9,34 @@
 
 import time
 
-# 563 - на нас (прямо)
-drone.move_to_marker(marker_id=563, z=1.0, speed=0.4, yaw=-90)
+# 515 - на нас (прямо)
+drone.move_to_marker(marker_id=515, z=1.0, speed=0.2, yaw=90)
 time.sleep(5)
 
-# 575 - наискосок право
-drone.move_to_marker(marker_id=575, z=1.0, speed=0.4, yaw=-45)
+# 525 - наискосок право
+drone.move_to_marker(marker_id=525, z=1.0, speed=0.2, yaw=45)
 time.sleep(5)
 
-# 383 - право
-drone.move_to_marker(marker_id=383, z=1.0, speed=0.4, yaw=180)
+# 381 - право
+drone.move_to_marker(marker_id=381, z=1.0, speed=0.2, yaw=0)
 time.sleep(5)
 
-# 167 - право
-drone.move_to_marker(marker_id=167, z=1.0, speed=0.4, yaw=180)
+# 165 - право
+drone.move_to_marker(marker_id=165, z=1.0, speed=0.2, yaw=0)
 time.sleep(5)
 
-# 11 - перед (прямо)
-drone.move_to_marker(marker_id=11, z=1.0, speed=0.4, yaw=-90)
+# 59 - перед (прямо)
+drone.move_to_marker(marker_id=59, z=1.0, speed=0.2, yaw=270)
 time.sleep(5)
 
-# 0 - наискосок лево (слово "вверх" относится к позиции маркера, на yaw не влияет)
-drone.move_to_marker(marker_id=0, z=1.0, speed=0.4, yaw=-135)
+# 50 - наискосок лево (слово "вверх" относится к позиции маркера, на yaw не влияет)
+drone.move_to_marker(marker_id=50, z=1.0, speed=0.2, yaw=225)
 time.sleep(5)
 
-# 168 - лево
-drone.move_to_marker(marker_id=168, z=1.0, speed=0.4, yaw=180)
+# 170 - лево
+drone.move_to_marker(marker_id=170, z=1.0, speed=0.2, yaw=180)
 time.sleep(5)
 
-# 384 - лево
-drone.move_to_marker(marker_id=384, z=1.0, speed=0.4, yaw=180)
+# 386 - лево
+drone.move_to_marker(marker_id=386, z=0.8, speed=0.4, yaw=180)
 time.sleep(5)
