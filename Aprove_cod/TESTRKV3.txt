@@ -1,0 +1,385 @@
+import time
+import cv2
+from EurusEdu import EurusControl, EurusCamera
+
+# =========================
+#      НАСТРОЙКИ МИССИИ
+# =========================
+
+DRONE_IP = "192.168.1.17"
+DRONE_PORT = 65432
+
+CAMERA_IP = "192.168.1.17"
+CAMERA_PORT = 8001
+
+DEFAULT_MEDKIT_ID = 10
+
+TAKEOFF_ALT = 1.0
+TAKEOFF_SPEED = 0.4
+
+PATROL_INTERVAL = 8.0         # секунд между перелётами к маркерам
+SHOT_INTERVAL_DRONE = 0.5     # минимальный интервал выстрелов по дрону
+SHOT_INTERVAL_TARGET = 1.0    # минимальный интервал выстрелов по мишени
+
+SPIN_YAW_STEP = 90            # градусов за один шаг кручения
+SPIN_STEPS = 4                # сколько шагов кручения делаем максимум
+SPIN_STEP_DURATION = 2.0      # сколько секунд отслеживаем цели на каждом шаге
+
+CENTER_ERROR_THRESHOLD = 20   # пикселей, считаем цель захваченной
+
+PID_KP = 0.005
+PID_KI = 0.001
+PID_KD = 0.001
+PID_INTEGRAL_LIMIT = 100.0
+PID_YAW_LIMIT = 1.0           # максимальная скорость поворота
+
+MAIN_LOOP_DT = 0.05           # базовая задержка цикла
+
+
+# =========================
+#      КЛАСС PID ПО YAW
+# =========================
+
+class PIDYaw:
+    def __init__(self, kp=PID_KP, ki=PID_KI, kd=PID_KD,
+                 integral_limit=PID_INTEGRAL_LIMIT):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.integral_limit = integral_limit
+
+        self.integral = 0.0
+        self.prev_error = 0.0
+
+    def reset(self):
+        """Сброс накопленной ошибки при потере цели/захвате."""
+        self.integral = 0.0
+        self.prev_error = 0.0
+
+    def update_control(self, error, dt):
+        """Обновление выхода ПИД с учётом шага времени dt."""
+        if dt <= 0.0:
+            dt = MAIN_LOOP_DT
+
+        # Интегральная часть
+        self.integral += error * dt
+        self.integral = max(-self.integral_limit, min(self.integral_limit,
+                                                      self.integral))
+
+        # Производная часть
+        derivative = (error - self.prev_error) / dt
+        self.prev_error = error
+
+        control = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
+        return control
+
+
+def constrain(value, max_limit):
+    return max(-max_limit, min(value, max_limit))
+
+
+# =========================
+#   ОТРИСОВКА ЦЕЛЕЙ И ФЛАГИ
+# =========================
+
+def draw_targets(frame, targets_data, enemy_color, my_color):
+    """
+    Простая отрисовка целей и проверка на наличие врагов/союзников.
+    Возвращает 4 флага: (вражеская мишень, вражеский дрон, союзная мишень, мертвый дрон)
+    """
+    enemy_target = False
+    enemy_drone = False
+    allied_target = False
+    dead_drone = False
+
+    if not targets_data or "all_objects" not in targets_data:
+        return enemy_target, enemy_drone, allied_target, dead_drone
+
+    for target in targets_data["all_objects"]:
+        try:
+            cx, cy, w, h = target['x'], target['y'], target['w'], target['h']
+            cls_name = target['class'].lower()
+
+            if "target" not in cls_name and "drone" not in cls_name:
+                continue
+
+            color = (0, 255, 0)
+
+            if "white" in cls_name:
+                color = (255, 255, 255)
+                dead_drone = True
+            elif enemy_color in cls_name:
+                color = (0, 255, 255)
+                if "drone" in cls_name:
+                    enemy_drone = True
+                else:
+                    enemy_target = True
+            elif my_color in cls_name:
+                color = (255, 255, 0)
+                if "target" in cls_name:
+                    allied_target = True
+
+            x1, y1 = int(cx - w / 2), int(cy - h / 2)
+            x2, y2 = int(cx + w / 2), int(cy + h / 2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(frame, cls_name, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        except KeyError:
+            # Логируем можно по желанию, но не роняем цикл
+            continue
+
+    return enemy_target, enemy_drone, allied_target, dead_drone
+
+
+# =========================
+#          MAIN
+# =========================
+
+def main():
+    # --- ввод аптечки ---
+    medkit_input = input(f"Введите номер аптечки (по умолчанию {DEFAULT_MEDKIT_ID}): ")
+    try:
+        medkit_id = int(medkit_input.strip()) if medkit_input.strip() else DEFAULT_MEDKIT_ID
+    except ValueError:
+        print("Некорректный ввод, используем значение по умолчанию.")
+        medkit_id = DEFAULT_MEDKIT_ID
+
+    # --- ввод цвета команды ---
+    enemy_color = input("Введите цвет врага (red/blue): ").strip().lower()
+    if enemy_color not in ("red", "blue"):
+        print("Некорректный цвет врага, используем 'red'.")
+        enemy_color = "red"
+    my_color = "blue" if enemy_color == "red" else "red"
+
+    # --- патрульные маркеры ---
+    patrol_markers = [
+        {"id": 515, "z": 1.0, "speed": 0.2, "yaw": 90},
+        {"id": 525, "z": 1.0, "speed": 0.2, "yaw": 45},
+        {"id": 381, "z": 1.0, "speed": 0.2, "yaw": 0},
+        {"id": 165, "z": 1.0, "speed": 0.2, "yaw": 0},
+        {"id": 59,  "z": 1.0, "speed": 0.2, "yaw": 270},
+        {"id": 50,  "z": 1.0, "speed": 0.2, "yaw": 225},
+        {"id": 170, "z": 1.0, "speed": 0.2, "yaw": 180},
+        {"id": 386, "z": 0.8, "speed": 0.4, "yaw": 180},
+    ]
+
+    cam = EurusCamera(CAMERA_IP, CAMERA_PORT)
+    drone = EurusControl(DRONE_IP, DRONE_PORT)
+
+    # Можно явно подключиться, если API это требует
+    try:
+        drone.connect()
+    except Exception as e:
+        print(f"Ошибка подключения к дрону: {e}")
+        return
+
+    if not getattr(drone, "is_connected", True):
+        print("Не удалось подключиться к дрону.")
+        return
+
+    # Инициализация ПИД-регулятора для наводки
+    pid_yaw = PIDYaw()
+
+    drone.start_game(start_game=True, team_color=my_color)
+
+    print("Взлет...")
+    drone.arm()
+    drone.takeoff(TAKEOFF_ALT, speed=TAKEOFF_SPEED)
+    time.sleep(5)
+
+    drone.aruco_map_navigation(state=True, fly_in_borders=True)
+    time.sleep(3)
+
+    print("Начинаем патрулирование!")
+
+    target_index = 0
+    last_move_time = 0.0
+    last_shot_time = 0.0
+    is_healing = False
+    has_spun = False
+
+    last_loop_time = time.time()
+
+    try:
+        while True:
+            now = time.time()
+            dt = now - last_loop_time
+            last_loop_time = now
+
+            # --- ЛОГИКА АПТЕЧКИ ---
+            telemetry = drone.get_telemetry()
+            if telemetry is not None:
+                is_alive = telemetry.get("is_alive", True)
+
+                if not is_alive and not is_healing:
+                    print(f"УБИЛИ! Летим на аптечку {medkit_id}")
+                    drone.move_to_marker(medkit_id, 1.0, speed=0.4)
+                    is_healing = True
+
+                if is_alive and is_healing:
+                    print("Ожили! Возвращаемся к патрулю.")
+                    is_healing = False
+                    last_move_time = 0.0
+                    pid_yaw.reset()
+
+            # --- ЛОГИКА ДВИЖЕНИЯ ПО ПАТРУЛЮ ---
+            if not is_healing:
+                if now - last_move_time > PATROL_INTERVAL:
+                    marker_data = patrol_markers[target_index]
+                    marker_id = marker_data["id"]
+                    print(f"Летим к метке {marker_id}")
+
+                    drone.move_to_marker(
+                        marker_id=marker_id,
+                        z=marker_data["z"],
+                        speed=marker_data["speed"],
+                        yaw=marker_data["yaw"],
+                    )
+
+                    target_index += 1
+                    if target_index >= len(patrol_markers):
+                        target_index = 0
+
+                    last_move_time = now
+                    has_spun = False
+                    pid_yaw.reset()
+
+            # --- ЛОГИКА КАМЕРЫ, НАВОДКИ И ВЫСТРЕЛА ---
+            ret, frame = cam.read()
+            if ret:
+                targets = cam.get_detection(blocking=False)
+                if targets:
+                    enemy_target, enemy_drone, allied_target, dead_drone = draw_targets(
+                        frame, targets, enemy_color, my_color
+                    )
+
+                    # Если видим мертвого (белого) дрона — быстрее скипаем к следующей метке
+                    if dead_drone and not is_healing:
+                        print("Вижу мертвого (белого) дрона! Скипаем на следующую метку.")
+                        last_move_time = 0.0
+                        pid_yaw.reset()
+
+                    # Наводка и выстрел по вражескому дрону
+                    elif enemy_drone and not is_healing:
+                        image_width = frame.shape[1]
+                        target_center_x = image_width / 2
+
+                        # Ищем конкретного вражеского дрона в кадре
+                        drone_box = None
+                        for obj in targets["all_objects"]:
+                            if "drone" in obj['class'].lower() and enemy_color in obj['class'].lower():
+                                drone_box = obj
+                                break
+
+                        if drone_box:
+                            current_x = drone_box['x']
+                            error = target_center_x - current_x
+
+                            # захват цели: небольшой остаточный error
+                            if abs(error) < CENTER_ERROR_THRESHOLD:
+                                print("Цель захвачена!")
+                                drone.set_vel_xy_yaw(0.0, 0.0, 0.0)
+                                pid_yaw.reset()
+
+                                if now - last_shot_time > SHOT_INTERVAL_DRONE:
+                                    print("Выстрел по дрону!")
+                                    drone.laser_shot()
+                                    last_shot_time = now
+                            else:
+                                yaw_vel = pid_yaw.update_control(error, dt)
+                                yaw_vel = constrain(yaw_vel, PID_YAW_LIMIT)
+                                print(f"Корректировка: {yaw_vel:.2f}, Ошибка: {error:.1f}")
+                                drone.set_vel_xy_yaw(0.0, 0.0, yaw_vel)
+
+                    # Вражеская мишень — простая стрельба без ПИД
+                    elif enemy_target and (now - last_shot_time > SHOT_INTERVAL_TARGET):
+                        print("Вражеская мишень обнаружена! Выстрел!")
+                        drone.laser_shot()
+                        last_shot_time = now
+
+                    # Союзная мишень (попали) — медленное кручение и поиск дрона
+                    elif allied_target and not has_spun and not is_healing:
+                        print("Попадание подтверждено! Медленно крутимся и ищем дрона...")
+                        has_spun = True
+
+                        # Останавливаем повороты на время кручения
+                        drone.set_vel_xy_yaw(0.0, 0.0, 0.0)
+                        pid_yaw.reset()
+
+                        spin_interrupted = False
+
+                        for _ in range(SPIN_STEPS):
+                            if spin_interrupted:
+                                break
+
+                            # Поворачиваемся на месте (без изменения высоты)
+                            drone.move_in_body_frame(x=0.0, y=0.0, z=0.0, yaw=SPIN_YAW_STEP)
+
+                            spin_timer = time.time()
+                            while time.time() - spin_timer < SPIN_STEP_DURATION:
+                                s_ret, s_frame = cam.read()
+                                if s_ret:
+                                    s_targets = cam.get_detection(blocking=False)
+                                    if s_targets:
+                                        _, e_drone, _, d_drone = draw_targets(
+                                            s_frame, s_targets, enemy_color, my_color
+                                        )
+
+                                        if d_drone:
+                                            print("Вражеский дрон мертв (белый)! Прерываем кручение.")
+                                            spin_interrupted = True
+                                            break
+
+                                        if e_drone and (time.time() - last_shot_time > SHOT_INTERVAL_TARGET):
+                                            print("Вижу вражеского дрона при кручении! Выстрел!")
+                                            drone.laser_shot()
+                                            last_shot_time = time.time()
+
+                                    cv2.imshow("Drone Patrol Spin", s_frame)
+                                    cv2.waitKey(1)
+                                time.sleep(MAIN_LOOP_DT)
+
+                        print("Кручение завершено/прервано. Летим дальше.")
+                        last_move_time = 0.0
+                        pid_yaw.reset()
+
+                cv2.imshow("Drone Patrol", frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+            time.sleep(MAIN_LOOP_DT)
+
+    except KeyboardInterrupt:
+        print("Остановлено пользователем.")
+    except Exception as e:
+        print(f"Произошла ошибка в основном цикле: {e}")
+    finally:
+        print("Посадка...")
+        try:
+            drone.set_vel_xy_yaw(0.0, 0.0, 0.0)
+        except Exception:
+            pass
+
+        try:
+            drone.land()
+            time.sleep(3)
+        except Exception as e:
+            print(f"Ошибка при посадке: {e}")
+
+        try:
+            cam.stop_stream()
+            cam.disconnect()
+        except Exception:
+            pass
+
+        try:
+            drone.disconnect()
+        except Exception:
+            pass
+
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
