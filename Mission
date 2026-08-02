@@ -11,3 +11,49 @@
 
 
 Смотри сделай код который стреляет после того как пришел по метке. и идет к следущей . ТУПО ПРОСТО БЕЗ ЛИШНИХ ДЕЙСТВИЙ САМЫЙ ПРОСТОЙ ДЕТСКИЙ КОД. ПРИШЕЛ ВЫСТРЕЛ ВСЕЕЕЕЕЕЕЕ
+
+drone.move_to_marker(marker_id=515, z=1.0, speed=0.2, yaw=0)
+time.sleep(5)
+
+
+import time
+import cv2
+from EurusEdu import EurusControl, EurusCamera
+    cam = EurusCamera("192.168.1.17", 8001)
+    drone = EurusControl("192.168.1.17", 65432)
+    def main():
+    medkit_input = input("Введите номер аптечки (например 10): ")
+    medkit_id = int(medkit_input.strip()) if medkit_input.strip() else 10
+    
+    enemy_color = input("Введите цвет врага (red/blue): ").strip().lower()
+    my_color = "blue" if enemy_color == "red" else "red"
+
+    drone.start_game(start_game=True, team_color=my_color)
+    cam.connect()
+    
+    cam.start_stream()
+    print("Камера включена.")
+
+    print("Взлет...")
+    drone.arm()
+    drone.takeoff(1.0, speed=0.12)
+    time.sleep(5)
+
+    drone.aruco_map_navigation(state=True, fly_in_borders=True)
+    time.sleep(3)
+try:
+        while True:
+            # --- ЛОГИКА АПТЕЧКИ ---
+            telemetry = drone.get_telemetry()
+            if telemetry is not None:
+                is_alive = telemetry.get("is_alive", True)
+                
+                if not is_alive and not is_healing:
+                    print(f"УБИЛИ! Летим на аптечку {medkit_id}")
+                    drone.move_to_marker(medkit_id, 1.0, speed=0.4)
+                    is_healing = True
+                
+                if is_alive and is_healing:
+                    print("Ожили! Возвращаемся к патрулю.")
+                    is_healing = False
+                    last_move_time = 0
