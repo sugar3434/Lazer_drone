@@ -1,0 +1,41 @@
+
+def constrain(value, threshold):
+    if value > threshold:
+        value = threshold
+    if value < -threshold:
+        value = -threshold
+    return value
+
+def main():
+    print(client.connect(ip, reset_state=True))
+    # client.set_vel_xy_yaw(0.0, 0.0, 0.0)
+    # client.takeoff()
+    # time.sleep(5)
+    # client.set_height(1.0)
+    
+    pid_yaw = PID(0.005, 0.0, 0.001)
+    
+    while True:
+        detection = client.get_detections()
+        if detection and "boxes" in detection:
+            image_width = detection["image_width"]
+            target_center_x = image_width / 2
+            
+            for box in detection["boxes"]:
+                if box["name"] == "drone":
+                    current_x = box["center"]["x"]
+                    error = target_center_x - current_x
+                    print(error)
+                    
+                    if abs(error) < 20:
+                        print("цель захвачена")
+                        # client.set_vel_xy_yaw(0.0, 0.0, 0.0)
+                    else:
+                        pid_yaw.update_control(error)
+                        yaw_vel = pid_yaw.get_control()
+                        yaw_vel = constrain(yaw_vel, 1.0)
+                        print(f"корректировка: {yaw_vel}")
+                        # client.set_vel_xy_yaw(0.0, 0.0, yaw_vel)
+                    break
+
+main()
