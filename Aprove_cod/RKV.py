@@ -80,7 +80,7 @@ def main():
 
     print("Взлет...")
     drone.arm()
-    drone.takeoff(1.0, speed=0.4)
+    drone.takeoff(0.8, speed=0.2)
     time.sleep(5)
 
     drone.aruco_map_navigation(state=True, fly_in_borders=True)
