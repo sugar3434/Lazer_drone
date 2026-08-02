@@ -2,7 +2,7 @@ import time
 import cv2
 from EurusEdu import EurusControl, EurusCamera
 
-# --- ДОБАВЛЕННЫЕ КЛАССЫ И ФУНКЦИИ ДЛЯ ПИД-РЕГУЛЯТОРА ---
+# КЛАССЫ И ФУНКЦИИ ДЛЯ ПИД-РЕГУЛЯТОРА 
 class PIDYaw:
     def __init__(self, kp=0.005, ki=0.0, kd=0.001):
         self.kp = kp
