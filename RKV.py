@@ -2,7 +2,7 @@ import time
 import cv2
 from EurusEdu import EurusControl, EurusCamera
 
-def simple_spin_search(drone, cam, enemy_color, hover_z=1.0):
+def simple_spin_search(drone, cam, enemy_color, hover_z=0.8):
     print("Начинаем поиск дрона по кругу...")
     for _ in range(4):
         drone.move_in_body_frame(x=0, y=0, z=hover_z, yaw=90)
