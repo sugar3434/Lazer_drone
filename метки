@@ -1,35 +1,10 @@
-
-
-import time
-
-# 515 - на нас (прямо)
-drone.move_to_marker(marker_id=515, z=1.0, speed=0.2, yaw=0)
-time.sleep(5)
-
-# 525 - наискосок право
-drone.move_to_marker(marker_id=525, z=1.0, speed=0.2, yaw=-45)
-time.sleep(5)
-
-# 381 - право
-drone.move_to_marker(marker_id=381, z=1.0, speed=0.2, yaw=90)
-time.sleep(5)
-
-# 165 - право
-drone.move_to_marker(marker_id=165, z=1.0, speed=0.2, yaw=90)
-time.sleep(5)
-
-# 59 - перед (прямо)
-drone.move_to_marker(marker_id=59, z=1.0, speed=0.2, yaw=0)
-time.sleep(5)
-
-# 50 - наискосок лево (слово "вверх" относится к позиции маркера, на yaw не влияет)
-drone.move_to_marker(marker_id=50, z=1.0, speed=0.2, yaw=315)
-time.sleep(5)
-
-# 170 - лево
-drone.move_to_marker(marker_id=170, z=1.0, speed=0.2, yaw=270)
-time.sleep(5)
-
-# 386 - лево
-drone.move_to_marker(marker_id=386, z=0.8, speed=0.2, yaw=270)
-time.sleep(5)
+  patrol_markers = [
+        {"id": 515, "z": 1.0, "speed": 0.12, "yaw": 0},
+        {"id": 525, "z": 1.0, "speed": 0.12, "yaw": -45},
+        {"id": 381, "z": 1.0, "speed": 0.12, "yaw": 90},
+        {"id": 165, "z": 1.0, "speed": 0.12, "yaw": 90},
+        {"id": 59,  "z": 1.0, "speed": 0.12, "yaw": 0},
+        {"id": 50,  "z": 1.0, "speed": 0.12, "yaw": 315},
+        {"id": 170, "z": 1.0, "speed": 0.12, "yaw": 270},
+        {"id": 386, "z": 1.0, "speed": 0.12, "yaw": 270}
+    ]
